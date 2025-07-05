@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug mdriver",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/mdriver",
+            "args": ["-V"],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "build"
+        }
+    ]
+} 

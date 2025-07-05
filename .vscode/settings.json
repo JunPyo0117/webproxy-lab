@@ -1,0 +1,11 @@
+{
+    "debug.inlineValues": "on",
+    "debug.showInlineBreakpointCandidates": true,
+    "C_Cpp.debugShortcut": true,
+    "editor.inlineSuggest.enabled": true,
+    "debug.terminal.clearBeforeReusing": true,
+    "C_Cpp.default.debuggerPath": "/usr/bin/lldb",
+    "files.associations": {
+        "limits.h": "c"
+    }
+} 

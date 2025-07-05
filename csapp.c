@@ -1046,22 +1046,96 @@ int open_listenfd(char *port)
 /****************************************************
  * Wrappers for reentrant protocol-independent helpers
  ****************************************************/
+// hostname의 port에서 실행중인 서버와 연결을 설정하는 클라이언트 함수
 int Open_clientfd(char *hostname, char *port) 
 {
-    int rc;
+    // int rc;
 
-    if ((rc = open_clientfd(hostname, port)) < 0) 
-	unix_error("Open_clientfd error");
-    return rc;
+    // if ((rc = open_clientfd(hostname, port)) < 0) 
+	// unix_error("Open_clientfd error");
+    // return rc;
+
+    int clientfd;                      // 클라이언트 소켓 파일 디스크립터
+    struct addrinfo hints, *listp, *p; // 주소 정보 힌트, 주소 리스트, 현재 주소
+
+    // 주소 정보 힌트 구조체 초기화
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_socktype = SOCK_STREAM;  // TCP 연결 사용
+    hints.ai_flags = AI_NUMERICSERV;  // 포트를 숫자로 해석
+    hints.ai_flags |= AI_ADDRCONFIG;  // 시스템 설정에 맞는 주소만 사용 IPv4 or IPv6
+    
+    // DNS 조회로 서버의 주소 목록 가져오기
+    Getaddrinfo(hostname, port, &hints, &listp);
+
+    // 연결 가능한 주소를 찾을 때까지 리스트 순회
+    for (p = listp; p; p = p->ai_next) {
+        // 소켓 생성 시도
+        if ((clientfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0)
+            continue; // 소켓 생성 실패, 다음 주소 시도
+
+        // 서버와 연결 시도
+        if ((connect(clientfd, p->ai_addr, p->ai_addrlen)) != -1)
+            break; // 연결 성공, 루프 종료
+        Close(clientfd); // 연결 실패, 소켓 닫고 다음 주소 시도
+    }
+
+    // 메모리 정리
+    Freeaddrinfo(listp);
+    if (!p)        // 모든 연결 시도 실패
+        return -1; 
+    else          // 연결 성공
+        return clientfd;
 }
 
 int Open_listenfd(char *port) 
 {
-    int rc;
+    // int rc;
 
-    if ((rc = open_listenfd(port)) < 0)
-	unix_error("Open_listenfd error");
-    return rc;
+    // if ((rc = open_listenfd(port)) < 0)
+	// unix_error("Open_listenfd error");
+    // return rc;
+
+    int listenfd, optval=1;            // 서버 소켓 FD, 소켓 재사용 옵션
+    struct addrinfo hints, *listp, *p; // 주소 정보 힌트, 주소 리스트, 현재 주소
+
+    // 주소 정보 힌트 구조체 초기화
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_socktype = SOCK_STREAM;  // TCP 연결 사용
+    hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG;  // 서버용 소켓(모든 IP 허용)
+    hints.ai_flags |= AI_NUMERICSERV;  // 포트를 숫자로 해석
+    
+    // 서버가 바인드할 주소 목록 가져오기 (모든 인터페이스)
+    Getaddrinfo(NULL, port, &hints, &listp);
+    
+
+    // 바인드 가능한 주소를 찾을 때까지 리스트 순회
+    for (p = listp; p; p = p->ai_next) {
+        // 소켓 생성 시도
+        if ((listenfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0)
+            continue; // 소켓 생성 실패, 다음 주소 시도
+
+        // "Address already in use" 에러 방지 - 주소 재사용 허용 
+        Setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
+        
+        // 소켓을 특정 주소와 포트에 바인드
+        if ((bind(listenfd, p->ai_addr, p->ai_addrlen)) != -1)
+            break; // 연결 성공, 루프 종료
+        Close(listenfd); // 바인드 실패, 소켓 닫고 다음 주소 시도
+    }
+
+
+    // 메모리 정리
+    Freeaddrinfo(listp);
+    if (!p)        // 모든 바인드 시도 실패
+        return -1; 
+
+    // 소켓을 연결 대기 상태로 설정
+    if (listen(listenfd, LISTENQ) < 0){
+        Close(listenfd);
+        return -1;
+    }
+
+    return listenfd; // 성공적으로 생성된 리슨 소켓 반환
 }
 
 /* $end csapp.c */
