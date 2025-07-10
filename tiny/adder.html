@@ -1,0 +1,28 @@
+<html>
+<head><title>Adder</title></head>
+<body>
+    <form id="adderForm">
+        <p>Enter two numbers to add:</p>
+        <input type="text" id="n1">
+        <input type="text" id="n2">
+        <input type="submit" value="Add">
+    </form>
+
+    <script>
+        document.getElementById('adderForm').addEventListener('submit', function(event) {
+            // Prevent the default form submission
+            event.preventDefault();
+
+            // Get the values from the input fields
+            var val1 = document.getElementById('n1').value;
+            var val2 = document.getElementById('n2').value;
+
+            // Construct the custom query string that adder.c expects
+            var queryString = val1 + '&' + val2;
+
+            // Construct the final URL and redirect
+            window.location.href = '/cgi-bin/adder?' + queryString;
+        });
+    </script>
+</body>
+</html>

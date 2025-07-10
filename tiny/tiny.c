@@ -11,9 +11,9 @@
 void doit(int fd);
 void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char *filename, char *cgiargs);
-void serve_static(int fd, char *filename, int filesize);
+void serve_static(int fd, char *filename, int filesize, char *method);
 void get_filetype(char *filename, char *filetype);
-void serve_dynamic(int fd, char *filename, char *cgiargs);
+void serve_dynamic(int fd, char *filename, char *cgiargs, char *method);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
                  char *longmsg);
 
@@ -60,10 +60,11 @@ void doit(int fd) {
 	}
   printf("Request headers:\n");
   printf("%s", buf);                // 서버 콘솔에 요청 라인 출력
-  sscanf(buf, "%s %s %s", method, uri, version);  // 요청 라인 파싱 (메소드, URI, 버전)
+  sscanf(buf, "%s %s %s", method, uri, version);  // 요청 라인 파싱 (메소드, URI, 버전) Ex) GET /index.html HTTP/1.1
   
   // 2단계: GET 메소드 확인 (Tiny는 GET만 지원)
-  if (strcasecmp(method, "GET")) {
+  // if (strcasecmp(method, "GET")) {
+  if (strcasecmp(method, "GET") && strcasecmp(method, "HEAD")) {
     clienterror(fd, method, "501", "Not implemented", "Tiny does not implement this method");
     return;  // GET이 아니면 501 에러 응답 후 종료
   }
@@ -87,7 +88,7 @@ void doit(int fd) {
       clienterror(fd, filename, "403", "Not found", "Tiny couldn't read this file");
       return;  // 권한 없으면 403 에러 응답 후 종료
     }
-    serve_static(fd, filename, sbuf.st_size);  // 정적 파일 전송
+    serve_static(fd, filename, sbuf.st_size, method);  // 정적 파일 전송
   }
   // 7단계: 동적 CGI 서비스 경로
   else {
@@ -96,7 +97,7 @@ void doit(int fd) {
       clienterror(fd, filename, "403", "Not found", "Tiny couldn't run CGI Program");
       return;  // 실행 권한 없으면 403 에러 응답 후 종료
     }
-    serve_dynamic(fd, filename, cgiargs);  // CGI 프로그램 실행
+    serve_dynamic(fd, filename, cgiargs, method);  // CGI 프로그램 실행
   }
 }
 
@@ -112,17 +113,6 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longms
   sprintf(body, "%s<p>%s: %s\r\n", body, longmsg, cause);                  // 상세 메시지와 원인 (예: Tiny couldn't find this file: /nonexistent.html)
   sprintf(body, "%s<hr><em>The Tiny Web server</em>\r\n", body);           // 서버 정보 푸터
   sprintf(body, "%s</body></html>\r\n", body);
-
-   /* --- FIX ---
-   * sprintf의 소스와 목적지가 겹치는 aliasing 버그를 해결했습니다.
-   * strcpy와 strcat을 사용하여 안전하게 HTML 본문을 구성합니다.
-   */
-  /* Build the HTTP response body */
-  // strcpy(body, "<html><title>Tiny Error</title>");
-  // strcat(body, "<body bgcolor=\"ffffff\">\r\n");
-  // sprintf(body + strlen(body), "%s: %s\r\n", errnum, shortmsg);
-  // sprintf(body + strlen(body), "<p>%s: %s\r\n", longmsg, cause);
-  // strcat(body, "<hr><em>The Tiny Web server</em>\r\n");
 
   // 2단계: HTTP 응답 헤더 생성 및 전송
   sprintf(buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);                    // 상태 라인 (예: HTTP/1.0 404 Not found)
@@ -162,7 +152,7 @@ int parse_uri(char *uri, char *filename, char *cgiargs)
   char *ptr;  // '?' 위치를 찾기 위한 포인터
 
   // 정적 콘텐츠 처리 (URI에 "cgi-bin"이 없으면 정적 파일)
-  if (!strstr(uri, "cgi-bin")) {
+  if (!(uri, "cgi-bin")) {
     strcpy(cgiargs, "");                    // CGI 인수 비우기 (정적 파일은 인수 없음)
     strcpy(filename, ".");                  // 현재 디렉터리부터 시작
     strcat(filename, uri);                  // "./index.html", "./images/logo.png" 등
@@ -187,7 +177,7 @@ int parse_uri(char *uri, char *filename, char *cgiargs)
 
 // 정적 파일(HTML, 이미지 등)을 클라이언트에게 전송
 // 매개변수: fd(클라이언트 소켓), filename(파일 경로), filesize(파일 크기)
-void serve_static(int fd, char *filename, int filesize)
+void serve_static(int fd, char *filename, int filesize, char *method)
 {
   int srcfd;                              // 파일 디스크립터
   char *srcp, filetype[MAXLINE], buf[MAXBUF];  // 파일 메모리 포인터, MIME 타입, HTTP 응답 버퍼
@@ -202,31 +192,25 @@ void serve_static(int fd, char *filename, int filesize)
   sprintf(buf, "%sContent-type: %s\r\n", buf, filetype);   // MIME 타입
   sprintf(buf, "%s\r\n", buf);  // 빈 줄 추가
 
-  // // 1단계: HTTP 응답 헤더 생성 및 전송
-  // get_filetype(filename, filetype);
-
-  // // 각 헤더를 독립적으로 생성하고 전송하여 aliasing 문제를 해결한다.
-  // sprintf(buf, "HTTP/1.0 200 OK\r\n");
-  // Rio_writen(fd, buf, strlen(buf));
-  // sprintf(buf, "Server: Tiny Web Server\r\n");
-  // Rio_writen(fd, buf, strlen(buf));
-  // sprintf(buf, "Connection: close\r\n");
-  // Rio_writen(fd, buf, strlen(buf));
-  // sprintf(buf, "Content-length: %d\r\n", filesize);
-  // Rio_writen(fd, buf, strlen(buf));
-  // sprintf(buf, "Content-type: %s\r\n\r\n", filetype); // 헤더의 끝을 알리는 빈 줄(\r\n) 추가
-  // Rio_writen(fd, buf, strlen(buf));
 
   Rio_writen(fd, buf, strlen(buf));       // HTTP 헤더 전송
   printf("Response headers:\n");
   printf("%s", buf);                      // 서버 콘솔에 응답 헤더 출력
 
-   // 2단계: 파일 내용 전송 (메모리 매핑 방식)
-  srcfd = Open(filename, O_RDONLY, 0);    // 파일을 읽기 전용으로 열기
-  srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);  // 파일을 메모리에 매핑
-  Close(srcfd);                           // 파일 디스크립터 닫기 (메모리 매핑 후 불필요)
-  Rio_writen(fd, srcp, filesize);         // 매핑된 메모리 내용을 클라이언트에 전송
-  Munmap(srcp, filesize);                 // 메모리 매핑 해제
+  if (strcasecmp(method, "GET") == 0) {
+    // 2단계: 파일 내용 전송 (메모리 매핑 방식)
+    srcfd = Open(filename, O_RDONLY, 0);    // 파일을 읽기 전용으로 열기
+    // mmap 방식
+    // srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);  // 파일을 메모리에 매핑
+    // Close(srcfd);                           // 파일 디스크립터 닫기 (메모리 매핑 후 불필요)
+    // Rio_writen(fd, srcp, filesize);         // 매핑된 메모리 내용을 클라이언트에 전송
+    // Munmap(srcp, filesize);                 // 메모리 매핑 해제
+    srcp = malloc(filesize);
+    Rio_readn(srcfd, srcp, filesize);
+    Rio_writen(fd, srcp, filesize);
+    free(srcp);
+    Close(srcfd);
+  }
 }
 
 // 파일 확장자로부터 MIME 타입 결정
@@ -246,6 +230,8 @@ void get_filetype(char *filename, char *filetype)
     strcpy(filetype, "image/jpeg");
   else if (strstr(filename, ".ico"))      // ICO 파일 (favicon)
     strcpy(filetype, "image/x-icon");
+  else if (strstr(filename, ".mp4"))      // Mp4 파일 
+    strcpy(filetype, "video/mp4");
   else if (strstr(filename, ".mpg"))      // MPG 비디오
     strcpy(filetype, "video/mpg");
   else                                    // 기타 파일 (텍스트로 처리)
@@ -254,7 +240,7 @@ void get_filetype(char *filename, char *filetype)
 
 // 동적 콘텐츠 (CGI 프로그램) 실행 및 결과 전송
 // 매개변수: fd(클라이언트 소켓), filename(CGI 프로그램 경로), cgiargs(CGI 인수)
-void serve_dynamic(int fd, char *filename, char *cgiargs)
+void serve_dynamic(int fd, char *filename, char *cgiargs, char *method)
 {
   char buf[MAXLINE], *emptylist[] = { NULL };  // HTTP 응답 버퍼, execve용 빈 인수 리스트
 
@@ -265,11 +251,13 @@ void serve_dynamic(int fd, char *filename, char *cgiargs)
   Rio_writen(fd, buf, strlen(buf));            // 서버 정보 전송
 
   // 2단계: 자식 프로세스 생성하여 CGI 프로그램 실행
-  if (Fork() == 0) {                           // 자식 프로세스
-    // CGI 환경 변수 설정
-    setenv("QUERY_STRING", cgiargs, 1);      // CGI 인수를 환경 변수로 설정 ("15&25")
-    Dup2(fd, STDOUT_FILENO);                 // 표준 출력을 클라이언트 소켓으로 리다이렉트
-    Execve(filename, emptylist, environ);    // CGI 프로그램 실행 (./cgi-bin/adder)
+  if (Fork() == 0) { /* Child */
+    // 환경 변수 이름: "QUERY_STRING", 환경 변수 값: cgiargs (CGI 인수), 덮어쓰기: 1 (기존 값이 있어도 덮어씀)
+    setenv("QUERY_STRING", cgiargs, 1);
+    // method를 cgi-bin/adder.c에 넘겨주기 위해 환경변수 set
+    setenv("REQUEST_METHOD", method, 1);
+    Dup2(fd, STDOUT_FILENO); /* Redirect stdout to client */
+    Execve(filename, emptylist, environ); /* Run CGI program */
   }
-  Wait(NULL);                                  // 부모 프로세스: 자식 프로세스 완료 대기
+  Wait(NULL);
 }
